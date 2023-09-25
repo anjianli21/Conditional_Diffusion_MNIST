@@ -27,6 +27,8 @@ from torchvision.utils import save_image, make_grid
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 import numpy as np
+import os
+from datetime import datetime
 
 class ResidualConvBlock(nn.Module):
     def __init__(
@@ -57,7 +59,8 @@ class ResidualConvBlock(nn.Module):
             if self.same_channels:
                 out = x + x2
             else:
-                out = x1 + x2 
+                out = x1 + x2
+
             return out / 1.414
         else:
             x1 = self.conv1(x)
@@ -163,13 +166,13 @@ class ContextUnet(nn.Module):
 
         # convert context to one hot embedding
         c = nn.functional.one_hot(c, num_classes=self.n_classes).type(torch.float)
-        
+
         # mask out context if context_mask == 1
         context_mask = context_mask[:, None]
         context_mask = context_mask.repeat(1,self.n_classes)
         context_mask = (-1*(1-context_mask)) # need to flip 0 <-> 1
         c = c * context_mask
-        
+
         # embed context, time step
         cemb1 = self.contextembed1(c).view(-1, self.n_feat * 2, 1, 1)
         temb1 = self.timeembed1(t).view(-1, self.n_feat * 2, 1, 1)
@@ -178,7 +181,6 @@ class ContextUnet(nn.Module):
 
         # could concatenate the context embedding here instead of adaGN
         # hiddenvec = torch.cat((hiddenvec, temb1, cemb1), 1)
-
         up1 = self.up0(hiddenvec)
         # up2 = self.up1(up1, down2) # if want to avoid add and multiply embeddings
         up2 = self.up1(cemb1*up1+ temb1, down2)  # add and multiply embeddings
@@ -311,8 +313,15 @@ def train_mnist():
     n_feat = 128 # 128 ok, 256 better (but slower)
     lrate = 1e-4
     save_model = False
-    save_dir = './data/diffusion_outputs10/'
     ws_test = [0.0, 0.5, 2.0] # strength of generative guidance
+
+    # Create folder
+    now = datetime.now()
+    formatted_date_time = now.strftime('%Y-%m-%d_%H-%M-%S')
+    save_dir = f'./data/diffusion_outputs10/{formatted_date_time}'
+    if not os.path.isfile(save_dir):
+        os.mkdir(save_dir)
+        print(f"log saved in {save_dir}")
 
     ddpm = DDPM(nn_model=ContextUnet(in_channels=1, n_feat=n_feat, n_classes=n_classes), betas=(1e-4, 0.02), n_T=n_T, device=device, drop_prob=0.1)
     ddpm.to(device)
